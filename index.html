@@ -120,6 +120,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      column-gap: 0.75rem;
       padding: 0 1.1rem;
       z-index: 1000;
       font-family: var(--font-sans);
@@ -144,6 +145,16 @@
       gap: 0.5rem;
       flex-shrink: 0;
     }
+    .topbar .repo-link {
+      color: var(--ink-secondary);
+      text-decoration: none;
+      flex: 0 0 auto;
+      font-size: 0.81rem;
+      line-height: 1.25;
+      padding: 0.36rem 0.2rem;
+      white-space: nowrap;
+    }
+    .topbar .repo-link:hover { color: var(--accent); text-decoration: underline; }
 
     /* Controls & Buttons */
     .btn {
@@ -253,6 +264,15 @@
     }
     .toc-sub { padding-left: 1.25rem; font-size: 0.77rem; }
     .toc-hidden { display: none; }
+    .sidebar-footer {
+      display: none;
+      flex-shrink: 0;
+      padding: 0.65rem 0.85rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.81rem;
+    }
+    .sidebar-footer a { color: var(--ink-secondary); text-decoration: none; }
+    .sidebar-footer a:hover { color: var(--accent); text-decoration: underline; }
 
     /* Main Content — Unified Editorial Column */
     .main {
@@ -828,11 +848,15 @@
       .main { margin-left: 0; }
       .article { padding: 1.6rem 1.25rem 4rem; }
     }
+    @media (max-width: 640px) {
+      .topbar-title { display: none; }
+    }
     @media (max-width: 560px) {
       .topbar { padding: 0 0.6rem; }
-      .topbar-title { display: none; }
+      .topbar .repo-link { display: none; }
       .topbar-actions { gap: 0.3rem; }
       .topbar .btn { padding-left: 0.55rem; padding-right: 0.55rem; font-size: 0.78rem; }
+      .sidebar-footer { display: block; }
     }
 
     /* Print Stylesheet */
@@ -943,6 +967,7 @@
         <span>&#9776;</span> Contents
       </button>
       <div class="topbar-title">Authorization Patterns &amp; Hierarchical Permission-Context Architectures</div>
+      <a class="repo-link" aria-label="View source on GitHub" href="https://github.com/joeycumines/authorization-patterns-and-hierachical-permission-context-architectures-for-resource-oriented-apis" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
     </div>
     <div class="topbar-actions">
       <button id="btn-theme" class="btn" type="button" aria-label="Toggle Light/Dark Theme">Dark Mode</button>
@@ -991,6 +1016,9 @@
           <li class="toc-item"><a class="toc-link" href="#version-history">Version History (v1.5 – v1.3)</a></li>
         </ul>
       </nav>
+      <div class="sidebar-footer">
+        <a href="https://github.com/joeycumines/authorization-patterns-and-hierachical-permission-context-architectures-for-resource-oriented-apis" target="_blank" rel="noopener noreferrer">View source on GitHub&nbsp;↗</a>
+      </div>
     </aside>
 
     <!-- Main Monograph Content -->
@@ -1006,6 +1034,7 @@
             <span><strong>Target Paradigm:</strong> Google AIP Resource-Oriented APIs (gRPC / Protobuf)</span>
             <span><strong>Status:</strong> Canonical Technical Reference (v1.5)</span>
             <span><strong>Date:</strong> November 2026</span>
+            <span><strong>Source:</strong> <a href="https://github.com/joeycumines/authorization-patterns-and-hierachical-permission-context-architectures-for-resource-oriented-apis" target="_blank" rel="noopener noreferrer">GitHub repository&nbsp;↗</a></span>
           </div>
         </header>
 
@@ -4520,7 +4549,7 @@ if (typeof document !== 'undefined') {
       if (tag === "header" && el.classList.contains("doc-header")) {
         const title = el.querySelector("h1")?.textContent.trim() || "";
         const sub = el.querySelector(".doc-subtitle") ? serializeChildren(el.querySelector(".doc-subtitle")).trim() : "";
-        const meta = Array.from(el.querySelectorAll(".doc-meta span")).map((s) => "- " + serializeChildren(s).trim()).join("\n");
+        const meta = Array.from(el.querySelectorAll(".doc-meta > span")).map((s) => "- " + serializeChildren(s).trim()).join("\n");
         return `# ${title}\n\n${sub}\n\n${meta}\n\n---\n\n`;
       }
       if (tag === "section") {
