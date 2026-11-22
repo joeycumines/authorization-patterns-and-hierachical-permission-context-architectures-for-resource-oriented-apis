@@ -853,7 +853,7 @@
     }
     @media (max-width: 560px) {
       .topbar { padding: 0 0.6rem; }
-      .topbar .repo-link { display: none; }
+      .topbar .repo-link { font-size: 0.78rem; white-space: normal; text-align: right; }
       .topbar-actions { gap: 0.3rem; }
       .topbar .btn { padding-left: 0.55rem; padding-right: 0.55rem; font-size: 0.78rem; }
       .sidebar-footer { display: block; }
@@ -2814,7 +2814,8 @@ function validateContext(ctx, domains) {
   for (const c of ctx.claims) {
     if (!KINDS.has(c.kind)) return 'unknown claim kind';
     if (!Array.isArray(c.path) || !Array.isArray(c.holes)) return 'malformed claim';
-    const pats = domains[c.key]; if (!pats) continue;
+    if (!Object.prototype.hasOwnProperty.call(domains, c.key)) continue;
+    const pats = domains[c.key];
     if (!prefix(ctx.anchor, c.path)) return 'claim outside anchor';
     if (!(c.path.length === 0 || isSchemaPrefix(pats, c.path))) return 'scope outside binding hierarchy';
     for (const h of c.holes) {
@@ -2829,7 +2830,7 @@ function validateContext(ctx, domains) {
   }
   return null;
 }
-const usableClaims = (contexts, domains) => contexts.filter((c) => validateContext(c, domains) === null).flatMap((c) => c.claims.filter((x) => domains[x.key]));
+const usableClaims = (contexts, domains) => contexts.filter((c) => validateContext(c, domains) === null).flatMap((c) => c.claims.filter((x) => Object.prototype.hasOwnProperty.call(domains, x.key)));
 /* Per-target view selection (§4.4): use the most recently accepted view that has a valid context covering
    the target. Claims from different views are never merged. views: [{seq, contexts}]. */
 function evaluate(views, domains, key, target) {
@@ -2910,7 +2911,7 @@ function interpret(desc) {
     if (forms !== 1) { fail(m.name, 'declare exactly one of standard, handler_policy or requirements'); continue; }
     if ((a.standard || a.handlerPolicy) && (a.itemFilter || a.partialSuccess)) { fail(m.name, 'item_filter and partial_success accompany requirements only'); continue; }
     if (a.handlerPolicy) { methods[m.name] = { disposition: 'HANDLER_POLICY', handlerPolicy: a.handlerPolicy, requirements: [], fieldGuards: [] }; continue; }
-    if (a.requirements && !a.requirements.length) { fail(m.name, '`requirements` is empty'); continue; }
+    if (a.requirements !== undefined && (!Array.isArray(a.requirements) || !a.requirements.length)) { fail(m.name, '`requirements` is empty'); continue; }
     if ((a.partialSuccess === 'ALWAYS' || a.partialSuccess === 'REQUEST_SELECTED') && m.returns !== 'Operation') { fail(m.name, 'partial success on a method that does not return an Operation'); continue; }
     const fields = m.request || {}, reqs = [];
     let writer = null;
@@ -2983,7 +2984,8 @@ function contractVersion(I) {
     const m = I.methods[name];
     return m.disposition === 'HANDLER_POLICY' ? [name, 'HANDLER_POLICY', m.handlerPolicy]
       : [name, 'REQUIREMENTS', m.effect, m.partial, m.itemFilter, m.requirements.map((r) => [r.key, r.cls, r.field, r.kind, r.parentOf, r.condition, r.explicitOnly, [...r.wildcardVariables].sort()]),
-        m.fieldGuards.map((g) => [g.field, g.key, g.cls])];
+        m.fieldGuards.map((g) => [g.field, g.key, g.cls]),
+        Object.entries(m.guardFields || {}).sort(([a], [b]) => a.localeCompare(b)).map(([f, g]) => [f, !!g.outputOnly, !!g.guard])];
   });
   const keys = Object.keys(I.keys).sort().map((k) => [k, I.keys[k].type, I.keys[k].cls, I.keys[k].explicitOnly, I.keys[k].patterns.map((p) => p.join('/')).sort()]);
   return JSON.stringify([methods, keys]);
@@ -3006,6 +3008,7 @@ function requirementsFor(I, methodName, request) {
   /* "-" is accepted only as the whole ID segment of a variable the declaration lists. */
   const wildcardOk = (r, t) => r.patterns.some((p) => p.length === t.length && p.every((s, i) =>
     (t[i] === '-' ? s === '*' && r.wildcardVariables.includes(r.vars[p.slice(0, i + 1).filter((x) => x === '*').length - 1]) : s === '*' || s === t[i])));
+  const nameOk = (r, t) => r.patterns.some((p) => p.length === t.length && p.every((s, i) => s === '*' || s === t[i]));
   const filtered = !!m.itemFilter;
   const out = [];
   for (const r of m.requirements) {
@@ -3025,8 +3028,8 @@ function requirementsFor(I, methodName, request) {
         if (name && !isWildcard(name)) targets.push(name); else unbound = true;
       });
     } else if (request[r.field]) targets = [request[r.field]];
-    if (targets.some((t) => isWildcard(t) && (r.parentOf || !wildcardOk(r, t)))) { targets = []; unbound = true; }
-    if (r.parentOf) targets = targets.map((t) => parentName(t, r.resourcePatterns.find((p) => p.length === t.length) || ['*']));
+    if (targets.some((t) => isWildcard(t) ? (r.parentOf || !wildcardOk(r, t)) : !nameOk({ patterns: r.parentOf ? r.resourcePatterns : r.patterns, wildcardVariables: r.wildcardVariables, vars: r.vars }, t))) { targets = []; unbound = true; }
+    if (r.parentOf) targets = targets.map((t) => parentName(t, r.resourcePatterns.find((p) => p.length === t.length && p.every((s, i) => s === '*' || s === t[i])) || ['*']));
     /* wildcard: 'UNIVERSAL' needs the key for every name the target matches; 'FILTERED' is applied per parent by a
        Search and never refuses; 'RESOLVE' is a wildcard Get, decided on the resource the name resolves to. */
     const wildcard = !targets.some(isWildcard) ? null : r.kind === 'resource' ? 'RESOLVE' : filtered ? 'FILTERED' : 'UNIVERSAL';
@@ -3064,7 +3067,7 @@ const underCeiling = (grants, classes) => grants.map((g) => (g.effect === 'forbi
 /* Grants as ancestor-inherited rules for the projector and the authority. */
 const rulesFromGrants = (grants, keys) => grants.map((g) => ({ path: g.scope, keys: keysFor(g, keys), effect: g.effect || 'permit', pred: g.condition, hidden: !!g.hidden, mayError: !!g.mayError, final: g.final }));
 /* Where the claims say a key is held. In a policy without exceptions an empty answer at the root means nowhere. */
-const usableAt = (claims, key) => claims.filter((c) => c.key === key && c.kind === 'ALLOW').map((c) => c.path);
+const usableAt = (claims, key) => claims.filter((c) => c.key === key && c.kind === 'ALLOW' && c.holes.length === 0).map((c) => c.path);
 
 /* ---------- 4. Decision and projection (§1.2, §3.6) ---------- */
 const PREDICATES = { owner: (attrs) => attrs.owner === 'alice' };
@@ -3134,7 +3137,9 @@ function projectContext(rules, keys, anchor, opts = {}) {
 function regionAllowed(rules, key, region, patterns, opts = {}) {
   const anchor = isWildcard(region) ? wildcardAnchor(region) : region;
   if (opts.nonprojecting && opts.nonprojecting(key, anchor)) return false;
-  const claims = projectAnchor(rules.map((r) => ({ ...r, hidden: false })), key, anchor, patterns);
+  let withheld = false;
+  const claims = projectAnchor(rules, key, anchor, patterns, { ...opts, alert: () => { withheld = true; } });
+  if (withheld) return false;
   return (isWildcard(region) ? verdictWildcard(claims, key, region) : verdictRegion(claims, key, region)) === 'ALLOW';
 }
 /* Maintained invariant for deployments that forbid private rules: a rule that some holder of an
@@ -3190,7 +3195,9 @@ function hint(I, views, domains, methodName, request, opts = {}) {
   if (!reqs.length || reqs.some((r) => r.unbound)) return 'DEFER';
   /* Nothing universal is required of a filtered wildcard, and a wildcard Get depends on what the name resolves to. */
   if (reqs.some((r) => r.wildcard === 'FILTERED' || r.wildcard === 'RESOLVE')) return 'DEFER';
-  const mine = contractVersion(I), usable = views.filter((v) => v.contractVersion === mine);
+  const mine = contractVersion(I);
+  const checkView = (v) => ['service', 'subjectContextId', 'policyRevision', 'revisionAuthority', 'revisionEpoch'].some((f) => v[f] !== undefined) ? acceptView(v) : true;
+  const usable = views.filter((v) => v.contractVersion === mine && checkView(v));
   return fold(reqs.map((r) => ({ targets: r.targets.map((t) => { const e = evaluate(usable, domains, r.key, t); return { rev: e.seq, result: e.result }; }) })));
 }
 /* Whole error status, derived from the code alone, so indistinguishable cases match (AIP-193, AIP-211). */
@@ -3208,13 +3215,13 @@ function queryAnchors(req, resolve, canSee) {
   if (req.some((s) => s.prefix !== undefined)) return { error: 'INVALID_ARGUMENT' };
   const id = (s) => (s.root ? 'root:' : 'name:' + s.name);
   if (new Set(req.map(id)).size !== req.length) return { error: 'INVALID_ARGUMENT' };
-  const out = new Set();
-  for (const a of req) { const c = resolve(a); if (c !== null && c !== undefined && canSee(c)) out.add(c); }
+  const out = new Set(), seen = new Set();
+  for (const a of req) { const c = resolve(a); if (c === null || c === undefined || !canSee(c)) continue; const k = JSON.stringify(c); if (!seen.has(k)) { seen.add(k); out.add(c); } }
   return { anchors: [...out].sort() };
 }
 const PROOF_KEY = ['service', 'contract', 'revisionAuthority', 'revisionEpoch', 'depRev', 'principal', 'claimsDigest', 'anchor', 'profile'];
 function cacheKey(r) {
-  const part = (f) => (Array.isArray(r[f]) ? 'path:' + r[f].join('/') : r[f] === undefined || r[f] === null ? '' : String(r[f]));
+  const part = (f) => (Array.isArray(r[f]) ? 'path:' + r[f].map((s) => String(s).length + ':' + s).join('/') : r[f] === undefined || r[f] === null ? '' : String(r[f]));
   for (const f of PROOF_KEY) if (!present(part(f))) throw Error('cache key field missing: ' + f);
   return JSON.stringify(PROOF_KEY.map(part));
 }
@@ -3229,7 +3236,7 @@ const PROFILE_RANK = { GRANT_SHAPED: 1, SCOPED_CLAIMS: 2 };
 /* A response is one coherent view: required fields must be present, not merely equal. */
 function acceptView(resp, maxProfile = 'SCOPED_CLAIMS') {
   if (!resp || !VIEW.every((f) => present(resp[f]))) return false;
-  if (!PROFILE_RANK[resp.profile] || PROFILE_RANK[resp.profile] > PROFILE_RANK[maxProfile]) return false;
+  if (!Object.prototype.hasOwnProperty.call(PROFILE_RANK, resp.profile) || PROFILE_RANK[resp.profile] > PROFILE_RANK[maxProfile]) return false;
   if (!acceptTtl(resp.remainingTtl) || !Array.isArray(resp.contexts)) return false;
   return resp.generation === undefined || parseGen(resp.generation) !== null;
 }
@@ -3239,7 +3246,8 @@ function cmpGen(a, b) { const x = parseGen(a), y = parseGen(b); if (x === null |
    floor prevents a lagging replica from installing an older view; serialising requests does not. */
 function acceptNext(current, next) {
   if (!current) return true;
-  if (current.generation !== undefined && next.generation !== undefined) {
+  if (current.generation !== undefined || next.generation !== undefined) {
+    if (current.generation === undefined || next.generation === undefined) return false;
     const c = cmpGen(next.generation, current.generation);
     return c > 0 || (c === 0 && next.policyRevision === current.policyRevision);
   }
@@ -3671,7 +3679,7 @@ if (typeof window !== 'undefined') window.AuthzModel = api;
 if (typeof module !== 'undefined') module.exports = api;
 if (typeof document !== 'undefined') {
   const btn = document.getElementById('run'), res = document.getElementById('results');
-  if (btn && res) { const go = () => { res.textContent = api.run().join('\n'); }; btn.addEventListener('click', go); go(); }
+  if (btn && res) { const go = () => { try { res.textContent = api.run().join('\n'); } catch (err) { res.textContent = 'ERROR running checks: ' + err.message; } }; btn.addEventListener('click', go); go(); }
 }
 })();
 </script>
@@ -3965,8 +3973,12 @@ if (typeof document !== 'undefined') {
       htmlEl.setAttribute("data-theme", theme);
       themeBtn.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
     }
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    const darkQuery = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+    if (darkQuery && darkQuery.matches) {
       setTheme("dark");
+    }
+    if (darkQuery && darkQuery.addEventListener) {
+      darkQuery.addEventListener("change", (e) => setTheme(e.matches ? "dark" : "light"));
     }
     themeBtn.addEventListener("click", () => {
       setTheme(htmlEl.getAttribute("data-theme") === "dark" ? "light" : "dark");
@@ -3974,8 +3986,10 @@ if (typeof document !== 'undefined') {
 
     document.getElementById("btn-toggle-sidebar").addEventListener("click", () => {
       if (window.innerWidth <= 960) {
+        document.body.classList.remove("sidebar-collapsed");
         document.body.classList.toggle("sidebar-open");
       } else {
+        document.body.classList.remove("sidebar-open");
         document.body.classList.toggle("sidebar-collapsed");
       }
     });
@@ -4134,7 +4148,7 @@ if (typeof document !== 'undefined') {
       const q = filterInp.value.trim().toLowerCase();
       const sortBy = sortSel.value;
       const preset = PRESETS[activePreset];
-      let rows = PATTERNS.filter((p) => !q || JSON.stringify(p).toLowerCase().includes(q));
+      let rows = PATTERNS.filter((p) => !q || [p.name, p.exemplars, p.model, p.latency, p.cardinality, p.revocation, p.sharing, p.listFilter, p.boundary].join(" ").toLowerCase().includes(q));
       if (sortBy === "latency") rows.sort((a, b) => a.latencyRank - b.latencyRank);
       else if (sortBy === "cardinality") rows.sort((a, b) => a.cardRank - b.cardRank);
       else if (sortBy === "revocation") rows.sort((a, b) => a.revRank - b.revRank);
@@ -4660,14 +4674,16 @@ if (typeof document !== 'undefined') {
       // Open raw text/plain Blob in a new tab so it renders directly as plain Markdown text
       const blob = new Blob([md], { type: "text/plain;charset=utf-8" });
       const blobUrl = URL.createObjectURL(blob);
-      const win = window.open(blobUrl, "_blank", "noopener");
+      /* A two-argument window.open is intentional: with "noopener" the return value is always null,
+         which would fire the fallback even when the tab opened. The blob is inert text/plain. */
+      let win = null;
+      try { win = window.open(blobUrl, "_blank"); } catch (e) { /* popup blocked */ }
       if (!win) {
         // Fallback if popups are blocked by browser/iframe sandbox
         mdModalPre.textContent = md;
         mdModal.classList.add("open");
-      } else {
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
       }
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     });
 
     // Reliable Print / PDF Export (works even inside sandboxed iframes where window.print() is blocked)
@@ -4677,15 +4693,16 @@ if (typeof document !== 'undefined') {
       articleClone.querySelectorAll("details.proof").forEach((d) => d.setAttribute("open", ""));
       articleClone.querySelectorAll(".copy-btn, .preset-bar, .workbench-controls").forEach((el) => el.remove());
 
+      const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const styleCss = document.querySelector("style").textContent;
       const printHtml = `<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
-  <title>${document.title} — Print / PDF</title>
+  <title>${escHtml(document.title)} — Print / PDF</title>
   <style>
     ${styleCss}
-    body { background: #ffffff; color: #111111; }
+    body { background: #ffffff !important; color: #111111 !important; }
     .print-toolbar {
       position: sticky; top: 0; z-index: 100;
       display: flex; align-items: center; justify-content: space-between; gap: 1rem;
@@ -4729,7 +4746,7 @@ if (typeof document !== 'undefined') {
       const isMd = params.get("format") === "md" || hash === "#format=md" || hash.startsWith("#format=md&");
       if (!isMd) return;
 
-      const isRaw = params.get("raw") === "1" || hash.includes("raw=1");
+      const isRaw = params.get("raw") === "1" || /(^|&)raw=1(&|$)/.test(hash);
       const md = serializeArticleToMarkdown();
       document.title = "Markdown — " + document.title;
       document.body.className = "md-permalink-mode";
@@ -4760,8 +4777,11 @@ if (typeof document !== 'undefined') {
           window.open(URL.createObjectURL(blob), "_blank", "noopener");
         });
         document.getElementById("btn-md-html").addEventListener("click", () => {
-          const cleanUrl = window.location.href.replace(/([?&])format=md(&raw=1)?/i, "").replace(/#format=md(&raw=1)?/i, "");
-          window.location.href = cleanUrl || window.location.pathname;
+          const u = new URL(window.location.href);
+          u.searchParams.delete("format");
+          u.searchParams.delete("raw");
+          u.hash = "";
+          window.location.href = u.href;
         });
       }
     }
@@ -4769,7 +4789,10 @@ if (typeof document !== 'undefined') {
     // Entering or leaving the Markdown view by editing the fragment needs a reload: the view replaces the page body.
     window.addEventListener("hashchange", () => {
       const wantsMd = /^#format=md(&|$)/i.test(window.location.hash || "");
-      if (wantsMd !== document.body.classList.contains("md-permalink-mode")) window.location.reload();
+      const raw = /(?:^|&)raw=1(?:&|$)/.test(window.location.hash || "");
+      const body = document.body;
+      if (wantsMd !== body.classList.contains("md-permalink-mode")) window.location.reload();
+      else if (wantsMd && raw !== !document.getElementById("btn-md-copy")) window.location.reload();
     });
   })();
   </script>
