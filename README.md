@@ -1,6 +1,6 @@
 # General Authorization Implementation Patterns & Hierarchical Permission-Context Architectures for Resource-Oriented APIs
 
-Specification: https://joeycumines.github.io/authorization-patterns-and-hierachical-permission-context-architectures-for-resource-oriented-apis/
+Specification: https://joeycumines.github.io/authorization-patterns-and-hierarchical-permission-context-architectures-for-resource-oriented-apis/
 
 tl;dr: Putting two complementary insights together, with AIP/protobuf descriptors as the single source of truth:
 
