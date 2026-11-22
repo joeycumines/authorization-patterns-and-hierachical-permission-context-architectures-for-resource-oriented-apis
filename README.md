@@ -30,4 +30,4 @@ This has led to *many* "relearning" moments, hence, I figured it was time to for
 
 With today's AI models, I've found reliable success in turning my intuition re: problems I previously struggled to solve without an extended period of, well, fixation, into solutions I feel comfortable with and have confidence in even without repeated iterations and trials in real production contexts. In this case, even without having actually rolled it out, yet.
 
-Nevertheless, I caution any reader to heed the following: The AI went ham, above and beyond the core patterns, ideas, and understanding, which I personally provided, and your milage may vary. If this approach kicks your dog, breaks your favorite mug, or otherwise causes you harm, please seek help from an... appropriately-qualified professional.
+Nevertheless, I caution any reader to heed the following: The AI went ham, above and beyond the core patterns, ideas, and understanding, which I personally provided, and your mileage may vary. If this approach kicks your dog, breaks your favorite mug, or otherwise causes you harm, please seek help from an... appropriately-qualified professional.
