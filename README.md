@@ -26,6 +26,21 @@ The primary contents of this repository - [index.html](index.html) - pair a brie
 I conceptualized and refined this approach *multiple times* over the course of my career, yet never had sufficient cause to take it beyond my personal notes.
 This has led to *many* "relearning" moments, hence, I figured it was time to formalize the approach. Seriously, I've reached the same conclusion from first principles multiple times.
 
+## Building and checking the specification
+
+Use GNU Make 4.3 or newer (`gmake` on macOS). The default target uses Python 3 to extract the three protobuf contracts from `index.html` into `build/proto/`. To run the model checks alone, use `make checks` with Node.js.
+
+The full suite also needs Node.js 18 or newer, npm, Google Chrome, `protoc`, and Google's `api-linter`. Set `GOOGLEAPIS_DIR` to a googleapis checkout containing `google/api/annotations.proto` if that module is missing from the local Buf v3 cache. Run the following commands from the repository root.
+
+```sh
+npm ci --prefix hack
+make -j check
+```
+
+The suite runs the model checks, compares the extracted contracts with `proto/`, compiles and lints them, and opens the local HTML in headless Chrome. After an intentional contract edit, run `make update-protos` and review the changed copies. `make clean` removes the generated contracts.
+
+Use `make checks-all` for individual model results, `make probe P=calibration` to run a script from `hack/probes/`, or `make help` for the target list. The Makefile accepts local tool paths through `NODE`, `PYTHON`, `PROTOC`, and `API_LINTER`. Set `PROTOBUF_INCLUDE` if the tools need an explicit directory for the well-known protobuf types. You can keep overrides and personal targets in a git-ignored `config.mk`.
+
 ## Disclaimer
 
 With today's AI models, I've found reliable success in turning my intuition re: problems I previously struggled to solve without an extended period of, well, fixation, into solutions I feel comfortable with and have confidence in even without repeated iterations and trials in real production contexts. In this case, even without having actually rolled it out, yet.

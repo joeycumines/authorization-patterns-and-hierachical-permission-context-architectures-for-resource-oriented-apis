@@ -1,0 +1,10 @@
+name = "authz"
+version = "1.8.0"
+defaultTargets = ["Authz", "authz-oracle"]
+
+[[lean_lib]]
+name = "Authz"
+
+[[lean_exe]]
+name = "authz-oracle"
+root = "Main"

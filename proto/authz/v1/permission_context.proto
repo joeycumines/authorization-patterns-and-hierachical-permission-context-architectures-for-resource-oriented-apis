@@ -1,0 +1,189 @@
+syntax = "proto3";
+
+package authz.v1;
+
+import "authz/v1/annotations.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "PermissionContextProto";
+option java_package = "io.github.joeycumines.authz.v1";
+
+// Advisory permission contexts for the authenticated caller.
+service PermissionContextService {
+  option (authz.v1.service) = {
+    required: true
+  };
+
+  // Returns advisory claims about what the authenticated caller holds
+  // within each requested anchor. Never a credential.
+  rpc QueryPermissionContexts(QueryPermissionContextsRequest)
+      returns (QueryPermissionContextsResponse) {
+    option (google.api.http) = {
+      post: "/v1:queryPermissionContexts"
+      body: "*"
+    };
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (authz.v1.method) = {
+      handler_policy: "authenticated_subject_disclosure"
+    };
+  }
+}
+
+// Request message for QueryPermissionContexts.
+message QueryPermissionContextsRequest {
+  // Logical API service whose operations are queried: "widgets.example".
+  string service = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // One or more anchors: the service root or resource names.
+  repeated Anchor anchors = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Highest profile the client implements. The server never sends more.
+  // Unspecified means PROFILE_GRANT_SHAPED.
+  Profile max_profile = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // Opaque snapshot_token from a previously accepted snapshot (§3.8).
+  // The server answers from a snapshot at least as new, fails with
+  // UNAVAILABLE if lagging or on a superseded epoch, or fails with
+  // INVALID_ARGUMENT if the token is malformed.
+  string min_snapshot_token = 4 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Response message for QueryPermissionContexts: one coherent snapshot.
+// Every context below shares these fields.
+message QueryPermissionContextsResponse {
+  // The logical API service this snapshot describes.
+  string service = 1;
+
+  // Opaque RFC 7232 ETag (AIP-154) over the active descriptors used to
+  // compute this snapshot (§3.7, §4.2). Clients compare it for equality
+  // to detect when their local descriptors need a refresh.
+  string descriptor_etag = 2;
+
+  // Identifies the subject and the authenticated inputs of this snapshot.
+  string subject_context_id = 3;
+
+  // Opaque non-empty identifier of the policy snapshot. Clients compare
+  // it for equality only and pass it back as min_snapshot_token (§3.8).
+  string snapshot_token = 4;
+
+  // Absolute expiration time of this snapshot (AIP-214, AIP-148): the
+  // earliest expiry across every underlying proof and the caller's
+  // session or credential.
+  google.protobuf.Timestamp expire_time = 5;
+
+  // The profile actually used; never above max_profile.
+  Profile profile = 6;
+
+  // Each distinct set of permission keys, once.
+  repeated KeySet key_sets = 7;
+
+  // Sparse: an anchor that does not resolve for the caller is omitted.
+  repeated PermissionContext contexts = 8;
+}
+
+// What a context is about: the service root or one resource (AIP-122).
+// The service is named once, on the request and the response.
+message Anchor {
+  // Exactly one arm is set.
+  oneof target {
+    // The tagged service root.
+    ServiceRoot service_root = 1;
+
+    // A relative resource name, such as "companies/A/teams/B".
+    string resource = 2 [(google.api.resource_reference) = {
+      type: "*"
+    }];
+  }
+}
+
+// The scope of a claim, or one of its holes (AIP-122).
+message Scope {
+  // Exactly one arm is set.
+  oneof target {
+    // The tagged service root.
+    ServiceRoot service_root = 1;
+
+    // A relative resource name, such as "companies/A/teams/B".
+    string resource = 2 [(google.api.resource_reference) = {
+      type: "*"
+    }];
+
+    // A collection, written as its relative path, such as
+    // "companies/A/teams": every resource in it.
+    string collection = 3;
+  }
+}
+
+// A set of permission keys shared by the claims that reference it.
+message KeySet {
+  // Starts at 1. 0 is never a valid id.
+  int32 id = 1;
+
+  // Sorted, without duplicates.
+  repeated string keys = 2;
+}
+
+// The claims for one anchor.
+message PermissionContext {
+  // Canonical. A context is identified by this anchor.
+  Anchor anchor = 1;
+
+  // What the caller holds at or below the anchor.
+  repeated Claim claims = 2;
+
+  // Claims below this anchor were withheld for budget. Query narrower
+  // anchors; the absence of a claim is not a denial.
+  bool descendants_omitted = 3;
+
+  // The anchors of the request this context answers, exactly as sent:
+  // the canonical name itself, or an alias that resolved to it.
+  repeated Anchor requested_anchors = 4;
+}
+
+// A statement about a set of keys over a scope, except its holes.
+message Claim {
+  // At or below the context's anchor.
+  Scope scope = 1;
+
+  // KeySet.id. The claim applies to every key in that set.
+  int32 key_set = 2;
+
+  // What a claim asserts. Values may be added; a client discards a
+  // context that carries a kind it does not know.
+  enum Kind {
+    // Invalid.
+    KIND_UNSPECIFIED = 0;
+
+    // Proven allow at every in-domain point of the region.
+    ALLOW = 1;
+
+    // Proven denial at every in-domain point of the region.
+    DENY = 2;
+
+    // An unresolved predicate. Asserts no decision.
+    CONDITIONAL = 3;
+  }
+
+  // Grant-shaped profile: ALLOW only.
+  Kind kind = 3;
+
+  // Strict descendants of scope. Empty in the grant-shaped profile.
+  repeated Scope holes = 4;
+}
+
+// How much a context may carry. Values may be added; a client rejects
+// a snapshot whose profile it does not know.
+enum Profile {
+  // Treated as PROFILE_GRANT_SHAPED in a request. Invalid in a response.
+  PROFILE_UNSPECIFIED = 0;
+
+  // Hole-free ALLOW claims only.
+  PROFILE_GRANT_SHAPED = 1;
+
+  // Adds holes, DENY, and CONDITIONAL.
+  PROFILE_SCOPED_CLAIMS = 2;
+}

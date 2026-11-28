@@ -1,0 +1,12 @@
+const api = require('../load-model.js')(process.argv[2]); const M = api.MODEL, I = M.interpret(api.FIXTURE), K = I.keys;
+const A = ['companies', 'A'], B = [...A, 'teams', 'B'], C = [...A, 'teams', 'C'];
+const rules = M.rulesFromGrants([{ scope: A, selectors: api.ROLES.viewer }, { scope: B, selectors: api.ROLES.viewer }, { scope: C, selectors: api.ROLES.viewer, effect: 'forbid' }], K);
+const fmt = (c) => `${c.kind} ${c.key} over ${c.path.join('/') || '(root)'}${c.holes.length ? ' except ' + c.holes.map((h) => h.join('/')).join(', ') : ''}`;
+const context = M.projectContext(rules, K, [], { profile: 'GRANT_SHAPED' });
+const readClaims = context.claims.filter((c) => c.key === 'widgets.get');
+console.log('grant-shaped answer at the root:');
+if (!readClaims.length) console.log('    (no read claims)');
+for (const claim of readClaims) console.log('   ', fmt(claim));
+const dom = Object.fromEntries(Object.values(K).map((k) => [k.key, k.patterns]));
+const view = [{ seq: 1, contexts: [context] }];
+console.log('   frontend, "read widget w1 in Team B":', M.offer(I, view, dom, 'GetWidget', { name: [...B, 'widgets', 'w1'] }));

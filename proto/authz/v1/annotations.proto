@@ -1,0 +1,195 @@
+syntax = "proto3";
+
+package authz.v1;
+
+import "google/protobuf/descriptor.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "AnnotationsProto";
+option java_package = "io.github.joeycumines.authz.v1";
+
+// Reference schema using organization-private custom-option extension numbers
+// (50000-99999). Adopting organizations define their own protobuf package,
+// language package options, and extension numbers for their chosen profile.
+extend google.protobuf.MethodOptions {
+  // What this RPC requires. Omission never means public access.
+  MethodAuthz method = 51001;
+}
+
+extend google.protobuf.ServiceOptions {
+  // Authorization settings of the service.
+  ServiceAuthz service = 51002;
+}
+
+// Authorization settings of one service.
+message ServiceAuthz {
+  // Logical AIP-122 API service name, such as "widgets.example".
+  // Optional when every google.api.resource message in the service's
+  // protobuf package shares one "{Service Name}/..." type prefix, or for
+  // a pure handler_policy service: its package defines no resources, it
+  // declares at least one handler_policy RPC, every local RPC declares
+  // handler_policy, and every imported RPC is handler_policy or
+  // unimplemented (§4.2). Required when the package defines resources
+  // under multiple service names, or defines none and the service is not
+  // pure handler_policy (including empty services and services declaring
+  // requirements or leaving RPCs undeclared). An empty value is the
+  // omitted value. Never derived from google.api.default_host.
+  string api_service = 1;
+
+  // Every RPC of this service must carry a declaration, and every RPC
+  // of an imported service the API implements must be listed below,
+  // served or unimplemented; a missing one fails the build. When
+  // false, an RPC without a declaration is outside this contract and
+  // clients defer to the server for it.
+  bool required = 2;
+
+  // Dispositions for RPCs defined in imported protos, which cannot be
+  // annotated where they are defined, such as those of
+  // google.longrunning.Operations: each served one with its form, and
+  // each other one as unimplemented.
+  repeated ImportedMethod imported_methods = 3;
+}
+
+// The disposition of one RPC defined in an imported proto.
+message ImportedMethod {
+  // Full method name: "google.longrunning.Operations/GetOperation".
+  string method = 1;
+
+  // Any form except `standard`. Unset when unimplemented is true.
+  MethodAuthz authz = 2;
+
+  // The RPC changes nothing. The service cannot add an option to an RPC
+  // defined in another proto, so this flag says what
+  // idempotency_level = NO_SIDE_EFFECTS would say there; an RPC whose
+  // own descriptor already sets that option needs no flag. Checked
+  // like the option (§4.2): it cannot label as read-only an RPC whose
+  // requirements create, update, delete, or execute.
+  bool no_side_effects = 3;
+
+  // The service does not serve this RPC and answers UNIMPLEMENTED.
+  // Listing it lets the build confirm that every RPC of an imported
+  // service the API implements was considered. Set alone: an
+  // unimplemented RPC has no authz and no effect to describe.
+  bool unimplemented = 4;
+}
+
+// What one RPC requires. Exactly one of `standard`, `handler_policy`,
+// or a non-empty `requirements` is set.
+message MethodAuthz {
+  // The forms that carry no requirement list of their own.
+  oneof form {
+    // Derive the requirement from the AIP standard or batch method shape.
+    Standard standard = 1;
+
+    // A named authoritative policy implemented by the service.
+    // Clients always defer to the server for such a method.
+    string handler_policy = 2;
+  }
+
+  // The independent requirements of a custom method. All must hold.
+  repeated Requirement requirements = 3;
+
+  // Search-style methods: the operation each returned item must pass,
+  // on the resource type of the first requirement. Some method of the
+  // service must declare that operation.
+  string item_filter = 4;
+
+  // Whether a batch-like custom method may partly succeed. Frozen.
+  enum PartialSuccess {
+    // Derive from the method shape.
+    PARTIAL_SUCCESS_UNSPECIFIED = 0;
+
+    // Atomic.
+    NEVER = 1;
+
+    // Operation-returning methods only.
+    ALWAYS = 2;
+
+    // Chosen by the request's return_partial_success field.
+    REQUEST_SELECTED = 3;
+  }
+
+  // Custom batch-like methods only. Standard batch methods derive it.
+  PartialSuccess partial_success = 5;
+}
+
+// One operation on one resource type, bound to one request field.
+message Requirement {
+  // A selector over operations, used by grants and by credential
+  // ceilings. No class implies another. Values may be added; a method
+  // with a class an interpreter does not know is not interpreted.
+  enum AccessClass {
+    // Invalid. Every requirement states its class.
+    ACCESS_CLASS_UNSPECIFIED = 0;
+
+    // Observes state.
+    READ = 1;
+
+    // Brings a resource into existence.
+    CREATE = 2;
+
+    // Changes an existing resource.
+    UPDATE = 3;
+
+    // Removes a resource.
+    DELETE = 4;
+
+    // Privileged administration, such as access policy.
+    ADMIN = 5;
+
+    // Any other custom mutation, such as publishing or running a job.
+    EXECUTE = 6;
+  }
+
+  // The class of the operation.
+  AccessClass access_class = 1;
+
+  // The operation, in lower camel case: "count". With the resource
+  // type it identifies the permission (§3.2).
+  string operation = 2;
+
+  // Where the requirement is checked. When neither arm is set, the
+  // target is derived from the request shape (§4.2).
+  oneof target {
+    // Path of the request field that names the target, such as
+    // "destination_parent". `[]` expands one repeated field.
+    string target_field = 3;
+
+    // The target is the service root.
+    ServiceRoot service_root = 4;
+  }
+
+  // Resource type, when the target field's google.api.resource_reference
+  // cannot supply it: the type the target field names, or, with
+  // service_root, the type the key belongs to. A field that holds a
+  // parent's name carries child_type instead.
+  string resource_type = 5;
+
+  // Path of a bool request field. The requirement applies only when
+  // that field is true.
+  string condition = 6;
+
+  // Never matched by a class selector in a permit. Granted only by
+  // naming the operation (§3.7).
+  bool explicit_grant_only = 7;
+
+  // Parent variables whose ID segment may be "-" (AIP-159).
+  repeated string wildcard_variables = 8;
+
+  // The target is the parent of the resource the target field names
+  // (the service root for a top-level resource), as when an explicit
+  // upsert requires create on the parent of widget.name. Not valid with
+  // service_root or on a child_type field, which already names a parent.
+  bool parent_target = 9;
+}
+
+// Options of the derived form.
+message Standard {
+  // Parent variables whose ID segment may be "-" (AIP-159). Valid on
+  // List, on Get only where IDs are unique across parents, and on the
+  // top-level parent of a batch method.
+  repeated string wildcard_variables = 1;
+}
+
+// The tagged service root. Distinct from every AIP-122 resource name.
+message ServiceRoot {}

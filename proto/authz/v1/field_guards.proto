@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package authz.v1;
+
+import "google/protobuf/descriptor.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "FieldGuardsProto";
+option java_package = "io.github.joeycumines.authz.v1";
+
+// Reference schema using organization-private custom-option extension numbers
+// (50000-99999). Adopting organizations define their own protobuf package,
+// language package options, and extension numbers for their chosen profile.
+extend google.protobuf.FieldOptions {
+  // Optional field guard on a resource field (§4.5). A standard Create
+  // or Update, or its batch form, that writes this field also requires
+  // this operation on the target of the write. A custom method that
+  // can write the field lists the operation among its own requirements.
+  FieldAuthz field = 51003;
+}
+
+// Extra operation required when a standard Create or Update writes one
+// resource field. Names no target of its own; checked on the write target.
+message FieldAuthz {
+  // Access classes a field guard may carry.
+  enum AccessClass {
+    // Invalid. Every field guard states its class.
+    ACCESS_CLASS_UNSPECIFIED = 0;
+
+    // Changes an existing resource.
+    UPDATE = 1;
+
+    // Privileged administration, such as ownership.
+    ADMIN = 2;
+  }
+
+  // The class of the operation.
+  AccessClass access_class = 1;
+
+  // Operation name in lower camel case, such as "setOwner". Together
+  // with the resource type it identifies the permission key (§3.2).
+  string operation = 2;
+
+  // Never matched by a class selector in a permit (§3.7).
+  bool explicit_grant_only = 3;
+}
