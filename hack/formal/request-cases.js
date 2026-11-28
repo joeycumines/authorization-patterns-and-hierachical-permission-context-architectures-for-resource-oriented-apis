@@ -2598,11 +2598,11 @@ function requestCases(api, check, rng) {
   for (const [selectors, expectedOk] of [
     [api.ROLES, true], [{readers:[read]}, true], [[{selectors:[read, {type:'*',op:'expunge'}]}], true],
     [{service:[{type:I.apiService + '/service',cls:'ADMIN'}]}, true],
-    [{declaredOperation:[{...read,op:'expunge'},{type:'*',op:'expunge'}]}, true],
+    [{declaredOperation:[{type:read.type,op:'expunge'},{type:'*',op:'expunge'}]}, true],
     [[{selectors:[read, {type:'*',op:'approve'}]}], false], [{empty:[]}, false], [[{selectors:[]}], false],
     [{short:[{...read,type:'Widget'}]}, false], [{foreign:[{...read,type:'other.example/User'}]}, false],
-    [{unknownClass:[{...read,cls:'OBSERVE'}]}, false], [{badOperation:[{...read,op:'Bad.Op'}]}, false],
-    [{undeclaredOperation:[{...read,op:'delet'}]}, false],
+    [{unknownClass:[{...read,cls:'OBSERVE'}]}, false], [{badOperation:[{type:read.type,op:'Bad.Op'}]}, false],
+    [{undeclaredOperation:[{type:read.type,op:'delet'}]}, false], [{dualArm:[{...read,op:'expunge'}]}, false],
     [{wrongTypeOperation:[{type:'widgets.example/Company',op:'expunge'}]}, false], [null, false],
   ]) {
     const ok = M.validateRoleSelectors(I,selectors).ok;
@@ -2620,9 +2620,10 @@ function requestCases(api, check, rng) {
     assert.equal(decision, 'DENY');
     queue.compare({ op: 'grantPolicy', descriptor: descriptor(I), grants: gs.map(c.grant), key, path: target }, c.lower(decision));
   }
-  // Well-formed operations absent from the active descriptor fail authoring validation,
+  // Well-formed operations not declared for the selected type fail authoring validation,
   // but expand to zero keys at runtime instead of failing closed across unrelated RPCs.
-  for (const retiredSelectors of [[{ type: 'widgets.example/Widget', op: 'delet' }], [{ type: '*', op: 'retiredOp' }]]) {
+  for (const retiredSelectors of [[{ type: 'widgets.example/Widget', op: 'delet' }], [{ type: '*', op: 'retiredOp' }],
+    [{ type: 'widgets.example/Company', op: 'expunge' }]]) {
     const retiredForbid = { scope: [], selectors: retiredSelectors, effect: 'forbid' };
     assert.equal(M.validateRoleSelectors(I, [retiredForbid]).ok, false);
     queue.compare({ op: 'validateRoleSelectors', descriptor: descriptor(I), selectors: [retiredForbid] }, false);
@@ -2634,6 +2635,14 @@ function requestCases(api, check, rng) {
     assert.equal(decision, 'ALLOW');
     queue.compare({ op: 'grantPolicy', descriptor: descriptor(I), grants: gs.map(c.grant), key, path: target }, c.lower(decision));
   }
+  // A live selector keeps its keys beside an operation the selected type does not declare.
+  const mixedPermit = { scope: [], selectors: [read, { type: '*', op: 'retiredOp' }], effect: 'permit' };
+  assert.equal(M.rulesFromGrants([mixedPermit], I.keys)[0].invalidSelectors, undefined);
+  assert.ok(M.keysFor(mixedPermit, I.keys).includes(key));
+  queue.compare({ op: 'expand', descriptor: descriptor(I), grant: c.grant(mixedPermit) }, M.keysFor(mixedPermit, I.keys));
+  const mixedDecision = M.authorize(M.rulesFromGrants([mixedPermit], I.keys), key, target);
+  assert.equal(mixedDecision, 'ALLOW');
+  queue.compare({ op: 'grantPolicy', descriptor: descriptor(I), grants: [c.grant(mixedPermit)], key, path: target }, c.lower(mixedDecision));
   // Fault observations are tied to the source grant while the ceiling changes its expanded keys.
   const sourceGrants = [
     {scope:[], mayError:true, selectors:[{type:'*',cls:'READ'},{type:'*',cls:'UPDATE'}]},

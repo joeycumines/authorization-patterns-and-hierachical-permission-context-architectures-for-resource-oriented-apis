@@ -3,10 +3,10 @@
   "version": "v1.8",
   "source": "../index.html",
   "hashes": {
-    "documentSha256": "1340d375fcc26e8a236b0b427cfcdf05a7643f4dd4cbf4a3ff4fbecf58a00296",
-    "modelSha256": "8865d83db47673ac6baeaadc8609747605f38b1e26da0dece1ceedc477fc3fb4",
+    "documentSha256": "f9a2b1338b7d4a8b61f7c8acaee9031157c583b22de79374dd844c333dd62a18",
+    "modelSha256": "5be344bc1729fb4478346cb2ad2d540a03250297fbfe06b90c885b74698a9329",
     "versionHeaderSha256": "24782a9b3dcd41d95c8b516c96edc207a19bd065af57663acafa9605f07325b9",
-    "leanSourcesSha256": "bfd299091a69d6258844b9f6efdfe847a273bc89acc434a1cb1943a1813edc27",
+    "leanSourcesSha256": "b6286ee1d76b6e5d18374414adc42bb527ecf7979a91095326314c85ccf2b996",
     "toolchainSha256": "651c41992ea41c7934cf0f6859bdc3d179ecb762e50d34569947c7fb3d82e1fc"
   },
   "sections": {

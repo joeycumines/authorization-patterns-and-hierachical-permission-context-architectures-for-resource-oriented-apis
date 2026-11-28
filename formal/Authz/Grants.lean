@@ -209,14 +209,15 @@ structure Grant where
   deriving DecidableEq, Repr, Lean.FromJson, Lean.ToJson
 
 /-- Authoring and CI selector validation: requires canonical declared types (or `*`),
-and either an operation the selected type declares (for `*`, any type) or one of the
-six access classes. -/
+and exactly one of an operation the selected type declares (for `*`, any type) or one
+of the six access classes. -/
 def validateRoleSelectors (d : Descriptor) (raw : Lean.Json) : Bool := Id.run do
   let some sources := d.resourceSources | return false
   let validSelector := fun (s : Lean.Json) => Id.run do
     let .ok type := (s.getObjValD "type").getStr? | return false
     unless type == "*" || (!d.service.isEmpty && type == d.service ++ "/service") || sources.any (·.1 == type) do return false
     if let .ok op := s.getObjVal? "op" then
+      if (s.getObjVal? "cls").toOption.isSome then return false
       return op.getStr?.toOption.any fun op => identifierOk op &&
         d.requirements.any fun r => (type == "*" || r.info.resourceType == type) && r.info.operation == op
     return (["READ","CREATE","UPDATE","DELETE","ADMIN","EXECUTE"] : List String).any fun cls => s.getObjValD "cls" == .str cls
@@ -521,7 +522,7 @@ def rulesFromGrants (d : Descriptor) (gs : List Grant) (c : Ceiling := none) :=
 /-- A grant with an empty selector list, an undeclared selector resource type, or a
 syntactically invalid operation invalidates grant compilation, so malformed or
 undeclared-type forbids fail closed instead of silently expanding to zero keys.
-Well-formed operations absent from the active descriptor are caught by
+Well-formed operations not declared for the selected type are caught by
 `validateRoleSelectors` at policy or CI validation rather than failing closed at
 runtime compilation. -/
 theorem invalid_selector_fails_closed {d : Descriptor} {gs : List Grant} {g : Grant}
